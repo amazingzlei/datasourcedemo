@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context" xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+       http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/context
+       http://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx.xsd http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+
+    <context:component-scan base-package="demo"/>
+
+    <context:property-placeholder location="classpath:db.properties" ignore-unresolvable="true"/>
+
+    <bean id="mysql_dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <property name="driverClassName" value="${mysql.driver}"></property>
+        <property name="url" value="${mysql.url}"></property>
+        <property name="username" value="${mysql.username}"></property>
+        <property name="password" value="${mysql.password}"></property>
+    </bean>
+
+    <bean id="oracle_dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <property name="driverClassName" value="${oracle.driver}"></property>
+        <property name="url" value="${oracle.url}"></property>
+        <property name="username" value="${oracle.username}"></property>
+        <property name="password" value="${oracle.password}"></property>
+    </bean>
+
+    <bean id="pg_dataSource" class="com.alibaba.druid.pool.DruidDataSource">
+        <property name="url" value="${pg.url}"></property>
+        <property name="username" value="${pg.username}"></property>
+        <property name="password" value="${pg.password}"></property>
+    </bean>
+
+    <!-- 动态数据源管理 -->
+    <bean id="dataSource" class="demo.common.datasource.DynamicDataSource">
+        <property name="targetDataSources">
+            <map key-type="java.lang.String">
+                <entry value-ref="mysql_dataSource" key="mysql_dataSource"></entry>
+                <entry value-ref="oracle_dataSource" key="oracle_dataSource"></entry>
+                <entry value-ref="pg_dataSource" key="pg_dataSource"></entry>
+            </map>
+        </property>
+        <property name="defaultTargetDataSource" ref="pg_dataSource"></property><!-- 默认数据源-->
+    </bean>
+
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <property name="mapperLocations" value="classpath:mapper/*.xml" />
+        <property name="dataSource" ref="dataSource" />
+    </bean>
+
+
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <property name="basePackage" value="demo.dao"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"></property>
+    </bean>
+
+    <!--事务控制-->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!--采用@Transactional注解方式使用事务-->
+    <tx:annotation-driven transaction-manager="transactionManager" />
+
+    <!--bean配合aop实现方法切入，实现数据源切换-->
+    <bean id="dataSourceAspect" class="demo.common.datasource.MDataSourceAspect" />
+    <aop:aspectj-autoproxy proxy-target-class="true" expose-proxy="true"/>
+    <aop:config expose-proxy="true">
+        <aop:aspect ref="dataSourceAspect" order="1">
+            <!-- 拦截所有service方法 -->
+            <aop:pointcut id="pointcut" expression="execution(* demo.dao..*(..))"/>
+            <aop:before pointcut-ref="pointcut" method="intercept" />
+            <aop:after pointcut-ref="pointcut" method="afterIntercept"/>
+        </aop:aspect>
+    </aop:config>
+
+<!--    &lt;!&ndash;采用配置方式使用事务&ndash;&gt;-->
+<!--    <tx:advice id="txAdvice" transaction-manager="transactionManager">-->
+<!--        <tx:attributes>-->
+<!--            <tx:method name="*" propagation="REQUIRED" read-only="false"/>-->
+<!--        </tx:attributes>-->
+<!--    </tx:advice>-->
+<!--    &lt;!&ndash;AOP事务&ndash;&gt;-->
+<!--    <aop:config>-->
+<!--        <aop:pointcut id="pc" expression="execution(* *..service..*(..))"/>-->
+<!--        <aop:advisor pointcut-ref="pc" advice-ref="txAdvice" order="2"/>-->
+<!--    </aop:config>-->
+    <!--针对项目下所有模块所有方法，都可以-->
+    <!--<aop:pointcut id="pointcut" expression="execution(* com.datasourceExchange..*(..))"/>-->
+    <!--<aop:pointcut id="pointcut" expression="execution(* com.datasourceExchange..*.*(..))"/>-->
+</beans>
